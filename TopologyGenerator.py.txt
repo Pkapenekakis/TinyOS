@@ -1,0 +1,61 @@
+import math
+
+
+def calculate_distance(x1, y1, x2, y2):
+    """
+    Calculate the Euclidean distance between two points.
+
+    Parameters:
+        x1 (float): X-coordinate of the first point.
+        y1 (float): Y-coordinate of the first point.
+        x2 (float): X-coordinate of the second point.
+        y2 (float): Y-coordinate of the second point.
+
+    Returns:
+        float: The Euclidean distance between the two points.
+    """
+    return math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
+
+def generate_topology(D, range_val):
+    """
+    Generate the topology and save to topology.txt in the correct format.
+
+    Parameters:
+        D (int): Dimension of the grid (D x D).
+        range_val (float): Communication range to determine neighbors.
+    """
+    lines = set()  # Use a set to store unique pairs without duplicates
+    
+    # Create a D x D grid and determine neighbors based on range_val
+    for i in range(D):
+        for j in range(D):
+            node_id = i * D + j  # Unique ID for each node
+            
+            # Check neighbors only in the grid to avoid duplicates
+            for x in range(D):
+                for y in range(D):
+                    neighbor_id = x * D + y
+                    if node_id != neighbor_id:
+                        # Calculate distance to see if it's within range
+                        distance = calculate_distance(i, j, x, y)
+                        if distance <= range_val:
+                            # Store each unique pair as a sorted tuple
+                            pair = (node_id, neighbor_id)
+                            if pair not in lines and (neighbor_id, node_id) not in lines:
+                                lines.add(pair)
+    
+    # Write lines to the file in the desired format
+    with open("topologyCustom.txt", "w") as file:
+        last_node = None
+        for node_id, neighbor_id in sorted(lines):
+            # Add a blank line between different nodes for readability
+            if last_node is not None and node_id != last_node:
+                file.write("\n")
+            file.write("{0} {1} -15.0\n".format(node_id, neighbor_id))
+            file.write("{0} {1} -15.0\n".format(neighbor_id, node_id))
+            last_node = node_id
+
+# Example usage
+D = int(input("Enter the grid dimension D: "))
+range_val = float(input("Enter the communication range: "))
+generate_topology(D, range_val)

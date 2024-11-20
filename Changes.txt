@@ -1,0 +1,18 @@
+CREATED: AggregationC.nc (tos/system)
+        Aggregator.nc (tos/interface)
+
+
+Changed: 	apps/tinyOS/SRTreeAPPC.nc	
+Line 2:	#include "AggregationC.nc"	--Included new files
+Line 9:	components AggregationC;	--Added the component
+Line 24: 				--Created a new timer
+Line 49-52				--Linked the timer as well as SRTreeC and message components	
+
+
+Changed: apps/tinyOS/SRTreeC.nc
+
+	Line 2: Included the aggregator.nc
+	Line 50-53: Declared global Variables used for the rest of functions
+	Line 175: Boot.Booted: Added a timer when the sensor boots
+	Line 220: Created an event for when the aggregationTimer is fired.
+	Line 549-589 RoutingReceive.receive(…): Added the value received by the children and collected it for aggregation
