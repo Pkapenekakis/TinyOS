@@ -49,7 +49,7 @@ implementation
   //@Pkapenekakis, Gpiperakis
   uint16_t sensorValue = 0;
   uint16_t lastSensorValue = 0; // To store the last sensor value for baseValue in next epoch
-  bool firstEpoch = 0; //flag to keep track of the first epoch, 0 for first
+  uint8_t firstEpoch = 1; //flag to keep track of the first epoch, 1 for first
 	
 	message_t radioRoutingSendPkt;
 	message_t radioNotifySendPkt;
@@ -190,7 +190,8 @@ implementation
 		roundCounter =0;
 
     //Start Aggregation timer
-    call AggregatorTimer.startPeriodic(40960) //start aggregation timer with 40s epoch -- 1sec -> 1024ms @Pkapenekakis, Gpiperakis
+    call AggregationTimer.startPeriodic(40960); //start aggregation timer with 40s epoch -- 1sec -> 1024ms @Pkapenekakis, Gpiperakis
+    dbg("Custom" , "Aggregation timer for 40s started for nodeID: %d\n", TOS_NODE_ID);
 		
 		if(TOS_NODE_ID==0) //base node
 		{
@@ -221,15 +222,16 @@ implementation
 
   //@Pkapenekakis, Gpiperakis
   event void AggregationTimer.fired() {
-    dbg("Custom" , "Kati kaname edw\n");
     // Generate and collect data for the current epoch
     if(firstEpoch){
       //Generate a random sensor value and update lastSensorValue
       lastSensorValue = call Aggregator.initialGenerateRandomSensorValue();
-      firstEpoch = 1; // Set the flag to indicate first epoch is done
+      dbg("Custom" , "Init Value generated for nodeID: %d is: %d\n", TOS_NODE_ID, lastSensorValue);
+      firstEpoch = 0; // Set the flag to indicate first epoch is done
     }else{
       //Generate sensor value within ±30% of lastSensorValue
       lastSensorValue = call Aggregator.generateRandomSensorValue(lastSensorValue);
+      dbg("Custom" , "Value generated for nodeID: %d is: %d\n", TOS_NODE_ID, lastSensorValue);
     }
     
 
