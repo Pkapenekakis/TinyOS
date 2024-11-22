@@ -1,8 +1,8 @@
 #include <stdio.h>
 
 module AggregationC {
-  uses interface Boot;
-  uses interface Timer<TMilli> as AggregationTimer;
+  //uses interface Boot;
+  //uses interface Timer<TMilli> as AggregationTimer;
   uses interface Random; // For generating RANDOM_NUM
   uses interface Receive; //For receiving data from child nodes
   uses interface Packet;
@@ -55,21 +55,26 @@ implementation {
       max_value = 0;
     }
 
-//*********************** Data Exchange Functions *******************************//
 
+//*********************** Data Exchange Functions *******************************//
+/*
   //Function responsible for sending the data of all the child nodes of this sensor
   command void Aggregator.sendAggregatedData() {
     message_t msg;
     uint16_t* payload = (uint16_t*)call Packet.getPayload(&msg, sizeof(uint16_t));
     *payload = sum; // Send the sum as the aggregated result
 
-    call AMSend.send(parentID, &msg, sizeof(uint16_t));
+    //call AMSend.send(parentID, &msg, sizeof(uint16_t));
 
     //Reset aggregation variables after sending
     sum = 0;
     count = 0;
     max_value = 0;
-  }
+  } 
+
+*/
+
+command void Aggregator.sendAggregatedData() {}
 
   // Receive data from child nodes
   event message_t* Receive.receive(message_t* msg, void* payload, uint8_t len) {
@@ -92,7 +97,7 @@ implementation {
   */
   command void Aggregator.aggregateAvg(uint16_t totalSum, uint8_t totalCount) {
     uint16_t average = (totalCount > 0) ? totalSum / totalCount : 0; //We check if data is collected in order to protect against errors
-    printf("AVG Aggregation Result: %u\n", average);
+    printf("AVG Aggregation Result: %u,      Count is: %d\n", average, count);
   }
 
 
