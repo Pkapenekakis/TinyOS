@@ -5,6 +5,7 @@ implementation{
 	components SRTreeC;
   //@Pkapenekakis, Gpiperakis
   components AggregationC;
+  components RandomC;  // Random number generation
   
 
 #if defined(DELUGE) //defined(DELUGE_BASESTATION) || defined(DELUGE_LIGHT_BASESTATION)
@@ -20,7 +21,7 @@ implementation{
 	components new TimerMilliC() as Led2TimerC;
 	components new TimerMilliC() as RoutingMsgTimerC;
 	components new TimerMilliC() as LostTaskTimerC;
-  components new TimerMillic() as AggregationTimerC; //Timer for aggregation Epochs @Pkapenekakis, Gpiperakis
+  components new TimerMilliC() as AggregationTimerC; //Timer for aggregation Epochs @Pkapenekakis, Gpiperakis
 	
 	components new AMSenderC(AM_ROUTINGMSG) as RoutingSenderC;
 	components new AMReceiverC(AM_ROUTINGMSG) as RoutingReceiverC;
@@ -47,9 +48,9 @@ implementation{
 	SRTreeC.LostTaskTimer->LostTaskTimerC;
   SRTreeC.AggregationTimer -> AggregationTimerC; //Link the aggregation timer @Pkapenekakis, Gpiperakis
 
-  // Connect AggregationC to SRTreeC and message components @Pkapenekakis, Gpiperakis
+  // Connect AggregationC to SRTreeC @Pkapenekakis, Gpiperakis
   SRTreeC.Aggregator -> AggregationC;
-  AggregationC.radioControl -> ActiveMessageC;
+  AggregationC.Random -> RandomC;
 	
 	SRTreeC.RoutingPacket->RoutingSenderC.Packet;
 	SRTreeC.RoutingAMPacket->RoutingSenderC.AMPacket;
