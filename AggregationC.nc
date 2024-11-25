@@ -1,10 +1,12 @@
 #include <stdio.h>
+#include "SensorValue.h"
 
 module AggregationC {
   //uses interface Boot;
   //uses interface Timer<TMilli> as AggregationTimer;
   uses interface Random; // For generating RANDOM_NUM
   uses interface Receive; //For receiving data from child nodes
+  uses interface AMSend;
   uses interface Packet;
   provides interface Aggregator;
 }
@@ -14,7 +16,7 @@ implementation {
   uint8_t count = 0;
   uint16_t max_value = 0;
   uint16_t sensorVal = 0;
-  uint8_t RANDOM_NUM = 1; // Placeholder for the random number (1 for MAX, 2 for AVG)
+  uint8_t RANDOM_NUM = 2; // Placeholder for the random number (1 for MAX, 2 for AVG)
   //uint16_t previousValue = 25; //Random initial Value
   //bool firstEpoch = true; //flag to trach if it is the first epoch
   
@@ -26,21 +28,24 @@ implementation {
  	} */
 
 
-  /* 
-  Accepts sensor values, accumulates them for the AVG calculation, and keeps track of the maximum value.
-  */
-  command void Aggregator.collectData(uint16_t sensorValue) {
-    // Collect sensor data and aggregate
-    sum += sensorValue;
-    count += 1;
-
-    if (sensorValue > max_value) {
-      max_value = sensorValue;
-    }
-  }
-
   //Final aggregation only runs at the base station
-    command void Aggregator.finalizeAggregation() {  
+  /*    
+  command void Aggregator.finalizeAggregation() {  
+      //Randomly decide between MAX and AVG (1 = MAX, 2 = AVG)
+      RANDOM_NUM = call Random.rand16() % 2 + 1; // generates a 16-bit rand value and %2 + 1 limits it to 1 or 2
+
+      // Perform aggregation based on RANDOM_NUM
+      if (RANDOM_NUM == 1) {
+        call Aggregator.aggregateMax(max_value);
+      } else if (RANDOM_NUM == 2) {
+        call Aggregator.aggregateAvg(sum, count);
+      }
+      sum = 0;
+      count = 0;
+      max_value = 0;
+    } */
+
+  command void Aggregator.finalizeAggregation() {  
       //Randomly decide between MAX and AVG (1 = MAX, 2 = AVG)
       RANDOM_NUM = call Random.rand16() % 2 + 1; // generates a 16-bit rand value and %2 + 1 limits it to 1 or 2
 
@@ -57,30 +62,67 @@ implementation {
 
 
 //*********************** Data Exchange Functions *******************************//
-/*
+
   //Function responsible for sending the data of all the child nodes of this sensor
-  command void Aggregator.sendAggregatedData() {
+  task void Aggregator.sendAggregatedData(uint16_t parentID) {
     message_t msg;
-    uint16_t* payload = (uint16_t*)call Packet.getPayload(&msg, sizeof(uint16_t));
-    *payload = sum; // Send the sum as the aggregated result
 
-    //call AMSend.send(parentID, &msg, sizeof(uint16_t));
+    sensor_value_t* payload = (sensor_value_t*)call Packet.getPayload(&msg, sizeof(sensor_value_t));
 
-    //Reset aggregation variables after sending
+    payload->sensorValue = sum;
+    payload->count = count;
+
+    //try and send the message, if it fails I handle it in the sendDone event
+    call AMSend.send(parentID, &msg, sizeof(sensor_value_t))
+    
+
+
+    //dbg("Custom" , "sum for a node with parentID %d is: %d\n", parentID, sum);
+
+    /*
+    //Reset aggregation variables on that sensor after sending
     sum = 0;
     count = 0;
     max_value = 0;
+    */
   } 
 
-*/
+  event void AMSend.sendDone(message_t *msg , error_t err){
+    if(err == SUCCESS){
+      //Reset aggregation variables on that sensor after sending successfully
+      dbg("Custom", "Message sent successfully. Resetting aggregation variables.\n");
+      sum = 0;
+      count = 0;
+      max_value = 0;   
+    }else{
+      dbg("Custom", "Send failed, reposting task. Error code: %d\n", err);
+      post sendAggregatedData(parentID); 
+    }
+  }
+  
 
-command void Aggregator.sendAggregatedData() {}
-
-  // Receive data from child nodes
+  //Receive data from child nodes
   event message_t* Receive.receive(message_t* msg, void* payload, uint8_t len) {
-    uint16_t* receivedValue = (uint16_t*)payload;
-    call Aggregator.collectData(*receivedValue);
+    sensor_value_t* receivedData = (sensor_value_t*)payload;
+
+    // Process the received data
+    call Aggregator.collectData(*receivedData);
+
     return msg;
+  }
+
+  /* 
+  Accepts sensor values, accumulates them for the AVG calculation, and keeps track of the maximum value.
+  */
+  command void Aggregator.collectData(sensor_value_t sensorData) {
+       
+    // Collect sensor data and aggregate
+    sum += sensorData->sensorValue;
+    count += sensorData->count; // Accumulate the count for AVG
+
+    if (sensorData->sensorValue > max_value) {
+      max_value = sensorData->sensorValue;
+    }
   }
 
 //*********************** Aggregation Functions *******************************//
