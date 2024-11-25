@@ -1,4 +1,5 @@
 #include "SimpleRoutingTree.h"
+#include "SensorValue.h"
 
 configuration SRTreeAppC @safe() { }
 implementation{
@@ -22,11 +23,14 @@ implementation{
 	components new TimerMilliC() as RoutingMsgTimerC;
 	components new TimerMilliC() as LostTaskTimerC;
   components new TimerMilliC() as AggregationTimerC; //Timer for aggregation Epochs @Pkapenekakis, Gpiperakis
+  components new TimerMilliC() as DepthDelayTimerC; //Timer for aggregation Epochs @Pkapenekakis, Gpiperakis
 	
 	components new AMSenderC(AM_ROUTINGMSG) as RoutingSenderC;
 	components new AMReceiverC(AM_ROUTINGMSG) as RoutingReceiverC;
 	components new AMSenderC(AM_NOTIFYPARENTMSG) as NotifySenderC;
 	components new AMReceiverC(AM_NOTIFYPARENTMSG) as NotifyReceiverC;
+  components new AMSenderC(AM_SENSORVAL) as AggregationSenderC; //@Pkapenekakis, Gpiperakis
+  components new AMReceiverC(AM_SENSORVAL) as AggregationReceiverC; //@Pkapenekakis, Gpiperakis
 #ifdef SERIAL_EN
 	components new SerialAMSenderC(AM_NOTIFYPARENTMSG);
 	components new SerialAMReceiverC(AM_NOTIFYPARENTMSG);
@@ -47,10 +51,14 @@ implementation{
 	SRTreeC.RoutingMsgTimer->RoutingMsgTimerC;
 	SRTreeC.LostTaskTimer->LostTaskTimerC;
   SRTreeC.AggregationTimer -> AggregationTimerC; //Link the aggregation timer @Pkapenekakis, Gpiperakis
+  SRTreeC.DepthDelayTimer -> DepthDelayTimerC;
 
   // Connect AggregationC to SRTreeC @Pkapenekakis, Gpiperakis
   SRTreeC.Aggregator -> AggregationC;
   AggregationC.Random -> RandomC;
+  AggregationC.Packet -> ActiveMessageC;
+  AggregationC.AMSend -> AggregationSenderC.AMSend;
+  AggregationC.Receive -> AggregationReceiverC.Receive;
 	
 	SRTreeC.RoutingPacket->RoutingSenderC.Packet;
 	SRTreeC.RoutingAMPacket->RoutingSenderC.AMPacket;
