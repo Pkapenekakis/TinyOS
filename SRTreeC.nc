@@ -1,4 +1,5 @@
 #include "SimpleRoutingTree.h"
+#include "SensorValue.h"
 #ifdef PRINTFDBG_MODE
   #include "printf.h"
 #endif
@@ -32,6 +33,7 @@ module SRTreeC
 	uses interface Timer<TMilli> as RoutingMsgTimer;
 	uses interface Timer<TMilli> as LostTaskTimer;
   uses interface Timer<TMilli> as AggregationTimer; //Timer for TAG epochs @Pkapenekakis, Gpiperakis
+  uses interface Timer<TMilli> as DepthDelayTimer; //Timer for TAG epochs @Pkapenekakis, Gpiperakis
 	
 	uses interface Receive as RoutingReceive;
 	uses interface Receive as NotifyReceive;
@@ -224,26 +226,32 @@ implementation
   event void AggregationTimer.fired() {
     // Generate and collect data for the current epoch
     if(firstEpoch){
-      //Generate a random sensor value and update lastSensorValue
-      lastSensorValue = call Aggregator.initialGenerateRandomSensorValue();
-      dbg("Custom" , "Init Value generated for nodeID: %d is: %d\n", TOS_NODE_ID, lastSensorValue);
+      //Generate a random sensor value
+      sensorValue = call Aggregator.initialGenerateRandomSensorValue();
+      //dbg("Custom" , "Init Value generated for nodeID: %d is: %d\n", TOS_NODE_ID, sensorValue);
       firstEpoch = 0; // Set the flag to indicate first epoch is done
     }else{
       //Generate sensor value within ±30% of lastSensorValue
-      lastSensorValue = call Aggregator.generateRandomSensorValue(lastSensorValue);
-      dbg("Custom" , "Value generated for nodeID: %d is: %d\n", TOS_NODE_ID, lastSensorValue);
+      sensorValue = call Aggregator.generateRandomSensorValue(lastSensorValue);
+      //dbg("Custom" , "Value generated for nodeID: %d is: %d\n", TOS_NODE_ID, sensorValue);
     }
     
 
-    call Aggregator.collectData(lastSensorValue); 
+    lastSensorValue = sensorValue;
+    call Aggregator.collectData(sensorValue); 
 
     // If this node is the base station, perform final aggregation
     if (TOS_NODE_ID==0) {
-        call Aggregator.finalizeAggregation();
+        call Aggregator.finalizeAggregation();    
     } else {
-        // Otherwise, send aggregated data to the parent node
-        call Aggregator.sendAggregatedData();
+        uint32_t delay = curdepth * 50; //50ms delay for each depth
+        call DepthDelayTimer.startOneShot(delay);
     }
+  }
+
+//Handle depth-based delayed transmission
+  event void DepthDelayTimer.fired() {
+    call Aggregator.sendAggregatedData(parentID); //send data after the delay
   }
 
 	
