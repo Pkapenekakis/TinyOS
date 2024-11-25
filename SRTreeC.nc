@@ -52,6 +52,8 @@ implementation
   uint16_t sensorValue = 0;
   uint16_t lastSensorValue = 0; // To store the last sensor value for baseValue in next epoch
   uint8_t firstEpoch = 1; //flag to keep track of the first epoch, 1 for first
+  uint8_t receivedFromChildren = 0;  // Counter to track received data from children
+  uint8_t childCount = 0;
 	
 	message_t radioRoutingSendPkt;
 	message_t radioNotifySendPkt;
@@ -238,20 +240,31 @@ implementation
     
 
     lastSensorValue = sensorValue;
-    call Aggregator.collectData(sensorValue); 
+
 
     // If this node is the base station, perform final aggregation
-    if (TOS_NODE_ID==0) {
+    if(TOS_NODE_ID==0){
         call Aggregator.finalizeAggregation();    
-    } else {
+    }else{
+      /*
         uint32_t delay = curdepth * 50; //50ms delay for each depth
-        call DepthDelayTimer.startOneShot(delay);
+        if (delay > 800){  // Cap the delay to 500ms
+          delay = 800;
+        } */
+        call DepthDelayTimer.startOneShot(10);
     }
   }
 
 //Handle depth-based delayed transmission
   event void DepthDelayTimer.fired() {
-    call Aggregator.sendAggregatedData(parentID); //send data after the delay
+    //dbg("Custom", "Sending aggregated data to parentID: %d\n", parentID);
+    call Aggregator.sendAggregatedData(parentID);
+    //dbg("Custom", "Eimai o: %d ELABA APO PAIDIA: %d EXW TOSA PAIDIA %d \n", TOS_NODE_ID, receivedFromChildren, childCount);
+    if(receivedFromChildren >= childCount){      
+      receivedFromChildren = 0;
+    }else{
+      call DepthDelayTimer.startOneShot(10);
+    }
   }
 
 	
@@ -528,18 +541,6 @@ implementation
 		printfflush();
 #endif
 
-		//if(len!=sizeof(NotifyParentMsg))
-		//{
-			//dbg("SRTreeC","\t\tUnknown message received!!!\n");
-//#ifdef PRINTFDBG_MODE
-			//printf("\t\t Unknown message received!!!\n");
-			//printfflush();
-//#endif
-			//return msg;http://courses.ece.tuc.gr/
-		//}
-		
-		//call Leds.led1On();
-		//call Led1Timer.startOneShot(TIMER_LEDS_MILLI);
 		atomic{
 		memcpy(&tmp,msg,sizeof(message_t));
 		//tmp=*(message_t*)msg;
@@ -573,10 +574,12 @@ implementation
 		error_t enqueueDone;
 		message_t tmp;
 		uint16_t msource;
-    uint16_t* receivedValue = (uint16_t*)payload; //The value received for aggregation @Pkapenekakis, Gpiperakis
+    //uint16_t* receivedValue = (uint16_t*)payload; 
+    sensor_value_t* receivedData = (sensor_value_t*)payload;//The value received for aggregation @Pkapenekakis, Gpiperakis
 
     // Add received data to current aggregation @Pkapenekakis, Gpiperakis
-    call Aggregator.collectData(*receivedValue);
+    //call Aggregator.collectData(*receivedData);
+    receivedFromChildren++;
 		
 		msource =call RoutingAMPacket.source(msg);
 		
@@ -837,6 +840,7 @@ implementation
 				// tote den exei akoma patera
 				parentID= call RoutingAMPacket.source(&radioRoutingRecPkt);//mpkt->senderID;q
 				curdepth= mpkt->depth + 1;
+        //dbg("Custom", "NodeID= %d : curdepth= %d , parentID= %d \n", TOS_NODE_ID ,curdepth , parentID);
 #ifdef PRINTFDBG_MODE
 				printf("NodeID= %d : curdepth= %d , parentID= %d \n", TOS_NODE_ID ,curdepth , parentID);
 				printfflush();
@@ -1011,12 +1015,16 @@ implementation
 #endif
 			if ( mr->parentID == TOS_NODE_ID)
 			{
-				// tote prosthiki stin lista ton paidion.
+				childCount++;
+        dbg("TAG", "Child node %d added. Total children: %d\n", mr->senderID, childCount);
 				
 			}
 			else
 			{
-				// apla diagrafei ton komvo apo paidi tou..
+				if (childCount > 0) {
+            childCount--;
+            dbg("TAG", "Child node %d removed. Total children: %d\n", mr->senderID, childCount);
+        }
 				
 			}
 			if ( TOS_NODE_ID==0)
