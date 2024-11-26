@@ -17,16 +17,9 @@ implementation {
   uint16_t max_value = 0;
   uint16_t sensorVal = 0;
   uint8_t RANDOM_NUM = 2; // Placeholder for the random number (1 for MAX, 2 for AVG)
-  //uint16_t previousValue = 25; //Random initial Value
-  //bool firstEpoch = true; //flag to trach if it is the first epoch
   uint16_t taskParentID = -1;
-  
-
-  /*
-  event void Boot.booted() {
-    // Start the timer to trigger aggregation every 40 seconds
-    call AggregationTimer.startPeriodic(40000); // 40,000 ms = 40 seconds
- 	} */
+  message_t output; //Needs to be declared here in order for the sendData task to work
+  bool sendBusy = FALSE; //Flag to track if we are seding data at the moment
 
 
   //Final aggregation only runs at the base station
@@ -49,24 +42,35 @@ implementation {
 
 //*********************** Data Exchange Functions *******************************//
 
-  
-
   task void finishSendingData() {
-    message_t msg;
+    sensor_value_t* payload;
+    error_t result;
 
-    sensor_value_t* payload = (sensor_value_t*)call Packet.getPayload(&msg, sizeof(sensor_value_t));
+    if(sendBusy){
+      dbg("Custom", "Send already in progress for node %d\n", TOS_NODE_ID);
+      return;
+    }
+
+    sendBusy = TRUE; //A send is starting
+
+    payload= (sensor_value_t*)call Packet.getPayload(&output, sizeof(sensor_value_t));
 
     if (payload == NULL) {
-        dbg("Custom", "Failed to get payload!\n");
+        dbg("Custom", "Failed to get payload! by node: %d\n", TOS_NODE_ID);
+        sendBusy = FALSE;
         return; 
     }
 
-    payload->sensorValue = sum;
-    payload->count = count;
+    payload->sensorValue = sum + sensorVal;
+    payload->count = count + 1;
 
-    dbg("Custom", "node id here: %d taskParentid: %d -- msg:%c --size: %d \n", TOS_NODE_ID, taskParentID,&msg, sizeof(sensor_value_t));
-    //try and send the message, if it fails I handle it in the sendDone event
-    call AMSend.send(taskParentID, &msg, sizeof(sensor_value_t));
+    //dbg("Custom", "node id here: %d pay sum: %d -- pay count:%d \n", TOS_NODE_ID, payload->sensorValue, payload->count);
+    result = call AMSend.send(taskParentID, &output, sizeof(sensor_value_t));
+    
+    if (result != SUCCESS) {
+        dbg("Custom", "AMSend failed for node %d, error: %d\n", TOS_NODE_ID, result);
+        sendBusy = FALSE; // Reset flag
+    }
   }
 
 
@@ -77,9 +81,10 @@ implementation {
   } 
 
   event void AMSend.sendDone(message_t *msg , error_t err){
+    sendBusy = FALSE; //Reset the flag since message sent
     if(err == SUCCESS){
       //Reset aggregation variables on that sensor after sending successfully
-      dbg("Custom", "Message sent successfully by node with id: %d. Resetting aggregation variables.\n", TOS_NODE_ID);
+      //dbg("Custom", "Message sent successfully by node with id: %d to the parent %d\n", TOS_NODE_ID, taskParentID);
       sum = 0;
       count = 0;
       max_value = 0;   
@@ -93,8 +98,10 @@ implementation {
   //Receive data from child nodes
   event message_t* Receive.receive(message_t* msg, void* payload, uint8_t len) {
     sensor_value_t* receivedData = (sensor_value_t*)payload;
-    // Process the received data
+    //Process the received data
     call Aggregator.collectData(*receivedData);
+
+    //dbg("Custom", "Node %d received data \n", TOS_NODE_ID);
 
     return msg;
   }
@@ -106,6 +113,7 @@ implementation {
     // Collect sensor data and aggregate
     sum += sensorData.sensorValue;
     count += sensorData.count; // Accumulate the count for AVG
+    dbg("Custom","Node: %d collected data: sum = %d  count = %d  parent = %d\n", TOS_NODE_ID, sum, count, taskParentID);
 
     if (sensorData.sensorValue > max_value) {
       max_value = sensorData.sensorValue;
@@ -138,6 +146,7 @@ implementation {
   command uint16_t Aggregator.initialGenerateRandomSensorValue() {
       // Generate a random number in the range [1, 50]
       uint16_t baseValue = (call Random.rand16() % 50) + 1; // Generates a number between 1 and 50
+      sensorVal = baseValue;
       return baseValue;
   }
 
@@ -154,7 +163,7 @@ implementation {
     do{
       newVal = (call Random.rand16() % 50) + 1; // Generates a number between 1 and 50
     }while(newVal < minBase || newVal > maxBase);
-    
+    sensorVal = baseValue;
     return newVal;
   }
 	
