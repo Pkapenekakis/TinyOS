@@ -24,15 +24,19 @@ implementation {
 
   //Final aggregation only runs at the base station
 
-  command void Aggregator.finalizeAggregation() {  
-      //Randomly decide between MAX and AVG (1 = MAX, 2 = AVG)
+  command void Aggregator.chooseAggregation(){
+    //Randomly decide between MAX and AVG (1 = MAX, 2 = AVG)
       RANDOM_NUM = call Random.rand16() % 2 + 1; // generates a 16-bit rand value and %2 + 1 limits it to 1 or 2
+      dbg("Custom", "Aggregation function chosen: %d\n", RANDOM_NUM);
+  }
 
+  command void Aggregator.finalizeAggregation() {  
       // Perform aggregation based on RANDOM_NUM
       if (RANDOM_NUM == 1) {
         call Aggregator.aggregateMax(max_value);
       } else if (RANDOM_NUM == 2) {
-        call Aggregator.aggregateAvg(sum, count);
+        dbg("Custom","Node : %d has ACTUAL sum: %d and count: %d \n", TOS_NODE_ID,sum+sensorVal, count+1 );
+        call Aggregator.aggregateAvg(sum+sensorVal, count+1); //Adding the values of the base station
       }
       sum = 0;
       count = 0;
@@ -47,7 +51,7 @@ implementation {
     error_t result;
 
     if(sendBusy){
-      dbg("Custom", "Send already in progress for node %d\n", TOS_NODE_ID);
+      dbg("CustomSend", "Send already in progress for node %d\n", TOS_NODE_ID);
       return;
     }
 
@@ -56,7 +60,7 @@ implementation {
     payload= (sensor_value_t*)call Packet.getPayload(&output, sizeof(sensor_value_t));
 
     if (payload == NULL) {
-        dbg("Custom", "Failed to get payload! by node: %d\n", TOS_NODE_ID);
+        dbg("CustomSend", "Failed to get payload! by node: %d\n", TOS_NODE_ID);
         sendBusy = FALSE;
         return; 
     }
@@ -64,11 +68,11 @@ implementation {
     payload->sensorValue = sum + sensorVal;
     payload->count = count + 1;
 
-    //dbg("Custom", "node id here: %d pay sum: %d -- pay count:%d \n", TOS_NODE_ID, payload->sensorValue, payload->count);
+    //dbg("CustomSend", "node id here: %d pay sum: %d -- pay count:%d \n", TOS_NODE_ID, payload->sensorValue, payload->count);
     result = call AMSend.send(taskParentID, &output, sizeof(sensor_value_t));
     
     if (result != SUCCESS) {
-        dbg("Custom", "AMSend failed for node %d, error: %d\n", TOS_NODE_ID, result);
+        dbg("CustomSend", "AMSend failed for node %d, error: %d\n", TOS_NODE_ID, result);
         sendBusy = FALSE; // Reset flag
     }
   }
@@ -84,7 +88,7 @@ implementation {
     sendBusy = FALSE; //Reset the flag since message sent
     if(err == SUCCESS){
       //Reset aggregation variables on that sensor after sending successfully
-      //dbg("Custom", "Message sent successfully by node with id: %d to the parent %d\n", TOS_NODE_ID, taskParentID);
+      dbg("CustomSend", "Message sent successfully by node with id: %d to the parent %d\n", TOS_NODE_ID, taskParentID);
       sum = 0;
       count = 0;
       max_value = 0;   
@@ -113,11 +117,12 @@ implementation {
     // Collect sensor data and aggregate
     sum += sensorData.sensorValue;
     count += sensorData.count; // Accumulate the count for AVG
-    dbg("Custom","Node: %d collected data: sum = %d  count = %d  parent = %d\n", TOS_NODE_ID, sum, count, taskParentID);
+    
 
     if (sensorData.sensorValue > max_value) {
       max_value = sensorData.sensorValue;
     }
+    dbg("Custom","Node: %d collected data: sum = %d  count = %d  maxVal = %d  parent = %d\n", TOS_NODE_ID, sum, count, max_value,taskParentID);
   }
 
 //*********************** Aggregation Functions *******************************//
@@ -134,7 +139,7 @@ implementation {
   */
   command void Aggregator.aggregateAvg(uint16_t totalSum, uint8_t totalCount) {
     uint16_t average = (totalCount > 0) ? totalSum / totalCount : 0; //We check if data is collected in order to protect against errors
-    printf("AVG Aggregation Result: %u,      Count is: %d\n", average, count);
+    printf("AVG Aggregation Result: %u \n", average);
   }
 
 
