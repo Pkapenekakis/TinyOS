@@ -53,9 +53,7 @@ implementation
   uint16_t lastSensorValue = 0; // To store the last sensor value for baseValue in next epoch
   uint8_t firstEpoch = 1; //flag to keep track of the first epoch, 1 for first
   uint8_t receivedFromChildren = 0;  // Counter to track received data from children
-  uint8_t childCount = 0; 
-  uint8_t maxDepth = 0; //Store maximum tree depth
-  bool dataSentThisEpoch = FALSE;
+  uint8_t childCount = 0;
 	
 	message_t radioRoutingSendPkt;
 	message_t radioNotifySendPkt;
@@ -199,7 +197,6 @@ implementation
 		if(TOS_NODE_ID==0) //base node
 		{
 
-      call Aggregator.chooseAggregation(); //Pkapenekakis Gpiperakis
     #ifdef SERIAL_EN
 			    call SerialControl.start();
     #endif
@@ -207,7 +204,7 @@ implementation
 			curdepth=0;
 			parentID=0;
 			dbg("Boot", "curdepth = %d  ,  parentID= %d \n", curdepth , parentID);
-
+			//dbg("Costum", "curdepth = %d  ,  parentID= %d \n", curdepth , parentID);
     #ifdef PRINTFDBG_MODE
 			    printf("Booted NodeID= %d : curdepth= %d , parentID= %d \n", TOS_NODE_ID ,curdepth , parentID);
 			    printfflush();
@@ -217,70 +214,64 @@ implementation
 			curdepth=-1;
 			parentID=-1;
 			dbg("Boot", "curdepth = %d  ,  parentID= %d \n", curdepth , parentID);
+			//dbg("Custom", "curdepth = %d  ,  parentID= %d \n", curdepth , parentID);
     #ifdef PRINTFDBG_MODE
 			    printf("Booted NodeID= %d : curdepth= %d , parentID= %d \n", TOS_NODE_ID ,curdepth , parentID);
 			    printfflush();
     #endif
 		}
-
-    //Start Aggregation timer @Gpiperakis, Pkapenekakis
-    call AggregationTimer.startPeriodic(40960); //start aggregation timer with 40s epoch -- 1sec -> 1024ms @Pkapenekakis, Gpiperakis
 		
-	}
-
-  //@Pkapenekakis, Gpiperakis
+    call AggregationTimer.startPeriodic(40960); //start aggregation timer with 40s epoch -- 1sec -> 1024ms @Pkapenekakis, Gpiperakis
+   
+		
+}
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  
   event void AggregationTimer.fired() {
-    uint32_t delay = 100; // Minimum delay
-    uint32_t perDepthDelay = 250; // Additional delay per depth - 
-    uint32_t baseDelay;
-    dataSentThisEpoch = FALSE;
-    //dbg("Custom" , "Aggregation timer for 40s started for nodeID: %d\n", TOS_NODE_ID);
-    // Generate and collect data for the current epoch
+		
+		uint32_t delay = 100;
     if(firstEpoch){
-      //Generate a random sensor value
       sensorValue = call Aggregator.initialGenerateRandomSensorValue();
-      dbg("SensorValues" , "Init Value generated for nodeID: %d is: %d\n", TOS_NODE_ID, sensorValue);
+      //dbg("Custom" , "Init Value generated for nodeID: %d is: %d\n", TOS_NODE_ID, sensorValue);
       firstEpoch = 0; // Set the flag to indicate first epoch is done
     }else{
-      //Generate sensor value within ±30% of lastSensorValue
-      sensorValue = call Aggregator.generateRandomSensorValue(lastSensorValue);
-      dbg("SensorValues" , "Value generated for nodeID: %d is: %d\n", TOS_NODE_ID, sensorValue);
+      sensorValue = call Aggregator.generateRandomSensorValue();
+      //dbg("Custom" , "Value generated for nodeID: %d is: %d\n", TOS_NODE_ID, sensorValue);
     }
-    
-    //dbg("Custom", "Node: %d test %d",TOS_NODE_ID, test);
-    lastSensorValue = sensorValue;
-
-    // Start depth-based delay for sending data
-    delay = (maxDepth - curdepth) * perDepthDelay + baseDelay; //Nodes deeper have less delay so Act faster
-
-    if (delay > 5000) { // Cap delay at 5 seconds
-        delay = 5000;
-    }
-
-    call DepthDelayTimer.startOneShot(delay);
+		if(curdepth==255 || curdepth==-1){
+			return;
+		}
+		delay = (10 - curdepth)*450+(10-TOS_NODE_ID)*5;
+		
+		//call DepthDelayTimer.startOneShot(40960/((curdepth+1)*10));//MUST CHANGE to max depth
+		call DepthDelayTimer.startOneShot(delay);
   }
 
-//Handle depth-based delayed transmission
   event void DepthDelayTimer.fired() {
-    if(dataSentThisEpoch){
-      return;
-    }
 
-    //dbg("Custom", "Node: %d --- test %d\n", TOS_NODE_ID ,test);    
-
-    if(receivedFromChildren < childCount){
-      call DepthDelayTimer.startOneShot(50);
-      return;
-    }
-
-    dataSentThisEpoch = TRUE;
-
-    if(TOS_NODE_ID == 0){
-      call Aggregator.finalizeAggregation();      
-    }else{
-      call Aggregator.sendAggregatedData(parentID);
-    }
+ 			if(TOS_NODE_ID==0){
+			  call Aggregator.finalizeAggregation();    
+			}else{
+				call Aggregator.sendAggregatedData(parentID);			
+			}
   }
+		
+/*dbg("Custom", "ID: %d parentID: %d depth: %d\n",TOS_NODE_ID, parentID,curdepth);
+dbg("Custom" , "ID: %d PARENT: %d  RECEIVED: %d CHILDREN  : %d DEPTH %d\n",TOS_NODE_ID,parentID,receivedFromChildren,childCount,curdepth);
+if(receivedFromChildren-1 >= childCount){      
+      receivedFromChildren = 0;
+			
+			if(TOS_NODE_ID==0){
+			  call Aggregator.finalizeAggregation();    
+			}else{
+				call Aggregator.sendAggregatedData(parentID);			
+			}
+    }else{
+      call DepthDelayTimer.startOneShot(30);
+			dbg("Custom" , "AGAIN\n");
+    }*/
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 	
 	event void RadioControl.startDone(error_t err)
@@ -590,11 +581,9 @@ implementation
 		message_t tmp;
 		uint16_t msource;
     //uint16_t* receivedValue = (uint16_t*)payload; 
-    sensor_value_t* receivedData = (sensor_value_t*)payload;//The value received for aggregation @Pkapenekakis, Gpiperakis
 
-    // Add received data to current aggregation @Pkapenekakis, Gpiperakis
-    //call Aggregator.collectData(*receivedData);
-    receivedFromChildren++;
+		
+		receivedFromChildren++;
 		
 		msource =call RoutingAMPacket.source(msg);
 		
@@ -815,7 +804,6 @@ implementation
 		message_t tmp;
 		uint8_t len;
 		message_t radioRoutingRecPkt;
-    uint8_t childDepth;
 		
 #ifdef PRINTFDBG_MODE
 		printf("ReceiveRoutingTask():received msg...\n");
@@ -838,14 +826,12 @@ implementation
 		{
 			NotifyParentMsg* m;
 			RoutingMsg * mpkt = (RoutingMsg*) (call RoutingPacket.getPayload(&radioRoutingRecPkt,len));
-      
-      //Gpiperakis, Pkapenekakis        
-      childDepth = mpkt->depth;
-      //Update ChildDepth dynamically
-      if(childDepth + 1 > maxDepth) {
-        maxDepth = childDepth + 1; // Parent depth = child depth + 1
-        dbg("Custom", "Node %d updated maxDepth to %d\n", TOS_NODE_ID, maxDepth);
-      }
+			
+			//if(TOS_NODE_ID >0)
+			//{
+				//call RoutingMsgTimer.startOneShot(TIMER_PERIOD_MILLI);
+			//}
+			//
 			
 			dbg("SRTreeC" , "receiveRoutingTask():senderID= %d , depth= %d \n", mpkt->senderID , mpkt->depth);
 #ifdef PRINTFDBG_MODE
@@ -1025,13 +1011,7 @@ implementation
 			// allios tha diagrafei to paidi apo ton pinaka paidion
 			
 			NotifyParentMsg* mr = (NotifyParentMsg*) (call NotifyPacket.getPayload(&radioNotifyRecPkt,len));
-      
-      //Gpiperakis, Pkapenekakis			
-      if (mr->depth > maxDepth) {
-        maxDepth = mr->depth; // Update maxDepth based on child depth
-        dbg("TagTree", "Node %d updated maxDepth to %d via child %d\n", TOS_NODE_ID, maxDepth, mr->senderID);
-      }
-
+			
 			dbg("SRTreeC" , "NotifyParentMsg received from %d !!! \n", mr->senderID);
 #ifdef PRINTFDBG_MODE
 			printf("NodeID= %d NotifyParentMsg from senderID = %d!!! \n",TOS_NODE_ID , mr->senderID);
@@ -1039,16 +1019,18 @@ implementation
 #endif
 			if ( mr->parentID == TOS_NODE_ID)
 			{
-				childCount++;
-        dbg("TagTree", "I am %d ,Child node %d added. Total children: %d\n",TOS_NODE_ID, mr->senderID, childCount);
 				
+				childCount++;
+				
+        dbg("TAG", "Child node %d added. Total children: %d\n", mr->senderID, childCount);
+				dbg("Costum", "Child node %d added. Total children: %d\n", mr->senderID, childCount);
 			}
 			else
 			{
-				if (childCount > 0) {
-            childCount--;
-            dbg("TagTree", "I am %d ,Child node %d removed. Total children: %d\n",TOS_NODE_ID, mr->senderID, childCount);
-        }
+				
+        dbg("TAG", "Child node %d removed. Total children: %d\n", mr->senderID, childCount);
+			  dbg("Costum", "Child node %d removed. Total children: %d\n", mr->senderID, childCount);
+				
 				
 			}
 			if ( TOS_NODE_ID==0)
@@ -1077,11 +1059,10 @@ implementation
 				NotifyParentMsg* m;
 				memcpy(&tmp,&radioNotifyRecPkt,sizeof(message_t));
 				
-        //@Gpiperakis, Pkapenekakis Was commented by ADELI, Slightly Changed
 				m = (NotifyParentMsg *) (call NotifyPacket.getPayload(&tmp, sizeof(NotifyParentMsg)));
-				m->senderID=mr->senderID;
-			  m->depth = maxDepth;
-				m->parentID = mr->parentID;
+				//m->senderID=mr->senderID;
+				//m->depth = mr->depth;
+				//m->parentID = mr->parentID;
 				
 				dbg("SRTreeC" , "Forwarding NotifyParentMsg from senderID= %d  to parentID=%d \n" , m->senderID, parentID);
 #ifdef PRINTFDBG_MODE
