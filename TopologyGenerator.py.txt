@@ -1,21 +1,5 @@
 import math
 
-
-def calculate_distance(x1, y1, x2, y2):
-    """
-    Calculate the Euclidean distance between two points.
-
-    Parameters:
-        x1 (float): X-coordinate of the first point.
-        y1 (float): Y-coordinate of the first point.
-        x2 (float): X-coordinate of the second point.
-        y2 (float): Y-coordinate of the second point.
-
-    Returns:
-        float: The Euclidean distance between the two points.
-    """
-    return math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
-
 def generate_topology(D, range_val):
     """
     Generate the topology and save to topology.txt in the correct format.
@@ -37,7 +21,7 @@ def generate_topology(D, range_val):
                     neighbor_id = x * D + y
                     if node_id != neighbor_id:
                         # Calculate distance to see if it's within range
-                        distance = calculate_distance(i, j, x, y)
+                        distance = math.sqrt( (i-j) ** 2 + (x + y) ** 2 )  #Calculates the Euclidean distance
                         if distance <= range_val:
                             # Store each unique pair as a sorted tuple
                             pair = (node_id, neighbor_id)
@@ -51,8 +35,8 @@ def generate_topology(D, range_val):
             # Add a blank line between different nodes for readability
             if last_node is not None and node_id != last_node:
                 file.write("\n")
-            file.write("{0} {1} -15.0\n".format(node_id, neighbor_id))
-            file.write("{0} {1} -15.0\n".format(neighbor_id, node_id))
+            file.write("{0} {1} 0.0\n".format(node_id, neighbor_id))
+            file.write("{0} {1} 0.0\n".format(neighbor_id, node_id))
             last_node = node_id
 
 # Example usage
