@@ -198,7 +198,7 @@ implementation
 		if(TOS_NODE_ID==0) //base node
 		{
 
-      //call Aggregator.chooseAggregation(); //Pkapenekakis Gpiperakis
+      call Aggregator.chooseAggregation(); //Pkapenekakis Gpiperakis
     #ifdef SERIAL_EN
 			    call SerialControl.start();
     #endif
@@ -282,8 +282,8 @@ implementation
     dataSentThisEpoch = TRUE;
 
     if(TOS_NODE_ID == 0){
-      //call Aggregator.finalizeAggregationOptional(); //Also need to uncomment chooseAggregation on boot.booted()
-      call Aggregator.finalizeAggregation();      
+      call Aggregator.finalizeAggregationOptional(); //Also need to uncomment chooseAggregation on boot.booted()
+      //call Aggregator.finalizeAggregation();      
     }else{
       call Aggregator.sendAggregatedData(parentID);
     }
