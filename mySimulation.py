@@ -3,7 +3,15 @@
 from TOSSIM import *
 import sys ,os
 import random
+import time #Pkapenekakis Gpiperakis
 
+seed = int(time.time())  # Generate the seed
+print("Saving RANDOM_SEED to file:", seed)
+
+with open("seed.txt", "w") as f:
+    f.write(str(seed))
+
+#Start tossim simulation
 t=Tossim([])
 f=sys.stdout #open('./logfile.txt','w')
 SIM_END_TIME= 1000 * t.ticksPerSecond()
@@ -16,11 +24,13 @@ print "TicksPerSecond : ", t.ticksPerSecond(),"\n"
 #t.addChannel("Radio",f)
 #t.addChannel("Serial",f)
 #t.addChannel("SRTreeC",f)
-t.addChannel("SensorValues",f)
-t.addChannel("Custom",f)
-#t.addChannel("TagTree",f)
-#t.addChannel("CustomSend",f)
 #t.addChannel("PacketQueueC",f)
+#t.addChannel("SensorValues",f)
+#t.addChannel("CustomSend",f)
+#t.addChannel("CustomReceive",f)
+t.addChannel("CustomAggregationFunction",f)
+#t.addChannel("CustomDataChosen",f)
+#t.addChannel("Custom",f)
 
 for i in range(0,10):
 	m=t.getNode(i)
