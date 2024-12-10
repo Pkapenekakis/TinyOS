@@ -17,6 +17,8 @@ implementation {
     uint16_t taskParentID;
     uint8_t nodePhase = 0; //0-> phase 1, 1->phase 2 only used in Phase2 Functions
     message_t output; //Needs to be declared here in order for the sendData task to work
+    bool sendBusy = FALSE; //Flag to track if we are seding data at the moment
+    bool alreadySentData = FALSE;
 
 
     /********************************************************************
@@ -56,12 +58,19 @@ implementation {
         static error_t sendError;
         micropulseP1_t* payload;
 
+        if(sendBusy){
+            dbg("Phase1CriticalPathTask", "Send already in progress for node %d\n", TOS_NODE_ID);
+            return;
+        }
+
+        sendBusy = TRUE; //A send is starting
+
         // Prepare the message
         payload = (micropulseP1_t*) call Packet.getPayload(&output, sizeof(micropulseP1_t));
         if (payload == NULL) {
-            dbg("Phase1CriticalPathTask", "Failed to get payload!\n");
+            dbg("Phase1CriticalPathTask", "Node %d: Failed to get payload!\n", TOS_NODE_ID);
+            sendBusy = FALSE;
             post sendCriticalPathToParentTask();  // Retry
-            return;
         }
 
         //To ensure that maxValue takes into account this sensor's Value
@@ -73,11 +82,12 @@ implementation {
             payload->criticalValue = maxValue;
         }
 
-        dbg("CriticalPathTask", "Propagating critical value to children: %u\n", maxValue);
+        dbg("Phase1CriticalPathTask", "Sending CriticalPath to: %d\n", maxValue);
 
         sendError = call AMSendP1.send(taskParentID, &output, sizeof(micropulseP1_t));
         if (sendError != SUCCESS) {
-            dbg("Phase1CriticalPathTask", "Send failed, reposting task\n");
+            dbg("Phase1CriticalPathTask", "Node %d: Send failed, reposting task\n", TOS_NODE_ID);
+            sendBusy = FALSE; // Reset flag
             post sendCriticalPathToParentTask();  // Retry
         }
     }
@@ -85,16 +95,17 @@ implementation {
     //Propagate Critical Path to Parent (Phase 1)
     command void MicroPulse.propagateCriticalPathToParent(uint16_t parentID) {
         taskParentID = parentID;
-        //May need to set a parent Value here
+
         post sendCriticalPathToParentTask();
     }
 
 
     event void AMSendP1.sendDone(message_t* msg, error_t err) {
+        sendBusy = FALSE; //Reset the flag since message sent
         if (err == SUCCESS) {
-            dbg("Phase1CriticalPathTask", "Message sent successfully to parent!\n");
+            dbg("Phase1CriticalPathTask", "Node %d: Message sent successfully to parent!\n", TOS_NODE_ID);
         } else {
-            dbg("Phase1CriticalPathTask", "Message send failed in sendDone, reposting task\n");
+            dbg("Phase1CriticalPathTask", "Node %d:  Message send failed in sendDone, reposting task\n", TOS_NODE_ID);
             post sendCriticalPathToParentTask();  //Retry on failure
         }
     }
@@ -110,13 +121,15 @@ implementation {
         uint16_t receivedMax;
 
         if (payload == NULL) {
-            dbg("Error", "Received null payload\n");
+            dbg("Phase1Receive", "Received null payload\n");
             return msg;
         }
 
         lastMax = maxValue; //Since maxValue changes as values are received keep track of the original in case it was greater
         receivedMax = receivedData.criticalValue;
 
+
+        dbg("Phase1Receive", "Node %d: Received data: critPath: %d \n",TOS_NODE_ID, receivedMax );
 
         if(load > receivedMax){
             maxValue = load;
@@ -140,12 +153,24 @@ implementation {
         static error_t sendError;
         micropulseP2_t* payload;
 
+        if(alreadySentData){
+            return;
+        }
+
+        if(sendBusy){
+            dbg("Phase2PathPropagation", "Send already in progress for node %d\n", TOS_NODE_ID);
+            return;
+        }
+
+        sendBusy = TRUE; //A send is starting
+
         // Prepare the message
         payload = (micropulseP2_t*) call Packet.getPayload(&output, sizeof(micropulseP2_t));
+
         if (payload == NULL) {
-            dbg("CriticalPathTask", "Failed to get payload!\n");
+            dbg("Phase2PathPropagation", "Failed to get payload!\n");
+            sendBusy = FALSE;
             post sendCriticalPathTask();  // Retry
-            return;
         }
 
         atomic {
@@ -153,28 +178,23 @@ implementation {
             payload->criticalValue = maxValue;
         }
 
-        dbg("CriticalPathTask", "Propagating critical value to children: %u\n", maxValue);
+        dbg("Phase2PathPropagation", "Propagating critical value to children: %u\n", maxValue);
 
         sendError = call AMSendP2.send(AM_BROADCAST_ADDR, &output, sizeof(micropulseP2_t));
         if (sendError != SUCCESS) {
-            dbg("CriticalPathTask", "Send failed, reposting task\n");
+            dbg("Phase2PathPropagation", "Send failed, reposting task\n");
+            sendBusy = FALSE;
             post sendCriticalPathTask();  // Retry
         }
     }
 
-    // Propagate Critical Path (Phase 2)
-    command void MicroPulse.propagateCriticalPath() {
-        nodePhase = 1;
-        //May need to set a parent Value here
-        post sendCriticalPathTask();
-    }
-
-
     event void AMSendP2.sendDone(message_t* msg, error_t err) {
+        sendBusy = FALSE; //Reset the flag since message sent
         if (err == SUCCESS) {
-            dbg("CriticalPathTask", "Message sent successfully!\n");
+            alreadySentData = TRUE;    
+            dbg("Phase2PathPropagation", "Critical Path sent successfully!\n");
         } else {
-            dbg("CriticalPathTask", "Message send failed in sendDone, reposting task\n");
+            dbg("Phase2PathPropagation", "Message send failed in sendDone, reposting task\n");
             post sendCriticalPathTask();  //Retry on failure
         }
     }
@@ -188,17 +208,17 @@ implementation {
         micropulseP2_t receivedData = *(micropulseP2_t*)payload;
 
         if (payload == NULL) {
-            dbg("Error", "Received null payload\n");
+            dbg("Phase2Receive", "Received null payload\n");
             return msg;
         }
 
         maxValue = receivedData.criticalValue;
         nodePhase = receivedData.phase;
 
+        dbg("Phase2Receive","Node: %d collected criticalPath Value: %d\n", TOS_NODE_ID, maxValue);
+
         post sendCriticalPathTask();
          
-        //dbg("Custom","Node: %d collected criticalPath Value: %d\n", TOS_NODE_ID, maxValue);
-
         return msg;
     }
 
