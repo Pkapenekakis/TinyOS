@@ -27,9 +27,12 @@ print "TicksPerSecond : ", t.ticksPerSecond(),"\n"
 #t.addChannel("SRTreeC",f)
 #t.addChannel("PacketQueueC",f)
 
-#t.addChannel("generateValues",f)
-t.addChannel("CriticalPathPropagation",f)
-t.addChannel("CriticalPathComputation",f)
+t.addChannel("generateValues",f)
+#t.addChannel("Custom",f)
+t.addChannel("Phase1CriticalPathTask",f)
+t.addChannel("Phase1Receive",f)
+t.addChannel("Phase2PathPropagation",f)
+t.addChannel("Phase2Receive",f)
 
 for i in range(0,10):
 	m=t.getNode(i)
