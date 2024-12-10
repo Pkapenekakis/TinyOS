@@ -20,6 +20,7 @@ implementation{
 	components new TimerMilliC() as Led2TimerC;
 	components new TimerMilliC() as RoutingMsgTimerC;
 	components new TimerMilliC() as LostTaskTimerC;
+    components new TimerMilliC() as Phase1TimerC; //Pkapenekakis Gpiperakis
 	
 	components new AMSenderC(AM_ROUTINGMSG) as RoutingSenderC;
 	components new AMReceiverC(AM_ROUTINGMSG) as RoutingReceiverC;
@@ -59,6 +60,7 @@ implementation{
 	SRTreeC.Led2Timer-> Led2TimerC;
 	SRTreeC.RoutingMsgTimer->RoutingMsgTimerC;
 	SRTreeC.LostTaskTimer->LostTaskTimerC;
+    SRTreeC.Phase1Timer->Phase1TimerC; //Pkapenekakis Gpiperakis
 	
 	SRTreeC.RoutingPacket->RoutingSenderC.Packet;
 	SRTreeC.RoutingAMPacket->RoutingSenderC.AMPacket;
