@@ -32,6 +32,7 @@ module SRTreeC
 	uses interface Timer<TMilli> as Led2Timer;
 	uses interface Timer<TMilli> as RoutingMsgTimer;
 	uses interface Timer<TMilli> as LostTaskTimer;
+    uses interface Timer<TMilli> as Phase1Timer;
 	
 	uses interface Receive as RoutingReceive;
 	uses interface Receive as NotifyReceive;
@@ -45,7 +46,8 @@ module SRTreeC
 }
 implementation
 {
-    uint8_t test = 0;
+    uint8_t maxDepth = 40;
+    bool dataSentPhase1 = FALSE;
 
 	uint16_t  roundCounter;
 	message_t radioRoutingSendPkt;
@@ -213,6 +215,7 @@ implementation
     #endif
 		}
 
+        //Pkapenekakis gpiperakis
         call MicroPulse.generateLoad();
 
 		
@@ -317,18 +320,15 @@ implementation
 		message_t tmp;
 		error_t enqueueDone;
 		RoutingMsg* mrpkt;
+        uint32_t delay; // Minimum delay
+        uint32_t perDepthDelay = 450; // Additional delay per depth - 
+        uint32_t randDelay = (maxDepth - TOS_NODE_ID) * 5; //Small randomised delay based on nodeID to ensure fewer message collisions
+    
+        //Depth-based delay for sending data
+        delay = (maxDepth - curdepth) * perDepthDelay + randDelay; //Nodes deeper have less delay so Act faster
 
-        //Pkapenekakis, gpiperakis  
+        call Phase1Timer.startOneShot(delay);
 
-        if(test == 0){
-            
-            if(TOS_NODE_ID == 0){
-                call MicroPulse.finalizePhaseOne(); //Also need to uncomment chooseAggregation on boot.booted()      
-            }else{
-                call MicroPulse.propagateCriticalPathToParent(parentID);
-            }
-          test = 1;
-        }
 
 		dbg("SRTreeC", "RoutingMsgTimer fired!  radioBusy = %s \n",(RoutingSendBusy)?"True":"False");
 #ifdef PRINTFDBG_MODE
@@ -409,11 +409,35 @@ implementation
 #endif
 		}		
 	}
+    
+    /************************************************************************************************************************
+    Timer
+
+    ************************************************************************************************/
+
+    //Gpiperakis Pkapenekakis
+    event void Phase1Timer.fired(){
+        //Pkapenekakis, gpiperakis  
+        if(dataSentPhase1){return;}
+
+        dataSentPhase1 = TRUE;
+        if(TOS_NODE_ID == 0){
+            dbg("Custom", "Was here, %d\n", TOS_NODE_ID);
+            call MicroPulse.finalizePhaseOne();     
+        }else{
+            //dbg("Custom", "Was 2nd here, %d\n", TOS_NODE_ID);
+            call MicroPulse.propagateCriticalPathToParent(parentID);
+        }
+    }
 	
-	event void Led0Timer.fired()
-	{
-		call Leds.led0Off();
-	}
+
+
+
+
+event void Led0Timer.fired()
+{
+	call Leds.led0Off();
+}
 	event void Led1Timer.fired()
 	{
 		call Leds.led1Off();
