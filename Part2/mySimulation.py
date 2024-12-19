@@ -5,12 +5,11 @@ import sys ,os
 import random
 import time #Pkapenekakis Gpiperakis
 
-seed = int(time.time())  # Generate the seed used for random functions 
+seed = int(time.time())  # Generate the seed
 print("Saving RANDOM_SEED to file:", seed)
 
 with open("seed.txt", "w") as f:
     f.write(str(seed))
-
 
 #Start tossim simulation
 t=Tossim([])
@@ -27,8 +26,16 @@ print "TicksPerSecond : ", t.ticksPerSecond(),"\n"
 #t.addChannel("SRTreeC",f)
 #t.addChannel("PacketQueueC",f)
 
+#Aggregation
+#t.addChannel("SensorValues",f)
+#t.addChannel("CustomSend",f)
+#t.addChannel("CustomReceive",f)
+#t.addChannel("CustomAggregationFunction",f)
+#t.addChannel("CustomDataChosen",f)
+t.addChannel("Custom",f)
+
+#Micropulse
 t.addChannel("generateValues",f)
-#t.addChannel("Custom",f)
 t.addChannel("Phase1CriticalPathTask",f)
 t.addChannel("Phase1Receive",f)
 t.addChannel("Phase2PathPropagation",f)
