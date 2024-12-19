@@ -9,6 +9,7 @@ module SRTreeC
 	uses interface Boot;
 	uses interface Leds;
     uses interface MicroPulse; //Pkapenekakis, Gpiperakis
+    uses interface Aggregator; //aggregation functions @Pkapenekakis, Gpiperakis
 	uses interface SplitControl as RadioControl;
 #ifdef SERIAL_EN
 	uses interface SplitControl as SerialControl;
@@ -32,6 +33,9 @@ module SRTreeC
 	uses interface Timer<TMilli> as Led2Timer;
 	uses interface Timer<TMilli> as RoutingMsgTimer;
 	uses interface Timer<TMilli> as LostTaskTimer;
+
+    uses interface Timer<TMilli> as AggregationTimer; //Timer for TAG epochs @Pkapenekakis, Gpiperakis
+    uses interface Timer<TMilli> as DepthDelayTimer; //Timer for TAG epochs @Pkapenekakis, Gpiperakis
     uses interface Timer<TMilli> as Phase1Timer;
 	
 	uses interface Receive as RoutingReceive;
@@ -46,10 +50,19 @@ module SRTreeC
 }
 implementation
 {
-    uint8_t maxDepth = 40;
-    bool dataSentPhase1 = FALSE;
-
 	uint16_t  roundCounter;
+
+    //@Pkapenekakis, Gpiperakis
+    uint16_t sensorValue = 0;
+    uint8_t receivedFromChildren = 0;  // Counter to track received data from children
+    uint8_t childCount = 0; 
+    uint8_t maxDepth = 10; //Store maximum tree depth
+    bool dataSentThisEpoch = FALSE;
+
+    //Micropulse
+    bool dataSentPhase1 = FALSE;
+    uint8_t currEpoch = 0;
+	
 	message_t radioRoutingSendPkt;
 	message_t radioNotifySendPkt;
 	
@@ -192,6 +205,7 @@ implementation
 		if(TOS_NODE_ID==0) //base node
 		{
 
+      call Aggregator.chooseAggregation(); //Pkapenekakis Gpiperakis
     #ifdef SERIAL_EN
 			    call SerialControl.start();
     #endif
@@ -215,12 +229,73 @@ implementation
     #endif
 		}
 
-        //Pkapenekakis gpiperakis
-        call MicroPulse.generateLoad();
-
+    call MicroPulse.generateLoad();
+    call AggregationTimer.startPeriodic(40960); //start aggregation timer with 40s epoch -- 1sec -> 1024ms @Pkapenekakis, Gpiperakis
 		
 	}
 
+  //@Pkapenekakis, Gpiperakis
+  event void AggregationTimer.fired() {
+    uint32_t delay; // Minimum delay
+    uint32_t perDepthDelay = 450; // Additional delay per depth - 
+    uint32_t randDelay = (maxDepth - TOS_NODE_ID) * 5; //Small randomised delay based on nodeID to ensure fewer message collisions
+    dataSentThisEpoch = FALSE;
+    currEpoch += 1;
+
+    //dbg("Custom" , "Aggregation timer for 40s started for nodeID: %d and epoch %d\n", TOS_NODE_ID, currEpoch);
+    
+
+    // Generate and collect data for the current epoch
+    if(currEpoch == 1){ //1 already incremented so first epoch = 1
+      //Generate a random sensor value
+      sensorValue = call Aggregator.initialGenerateRandomSensorValue();
+      dbg("SensorValues" , "Init Value generated for nodeID: %d is: %d\n", TOS_NODE_ID, sensorValue);
+    }else{
+      //Generate sensor value within ±30% of its lastValue
+      sensorValue = call Aggregator.generateRandomSensorValue();
+      dbg("SensorValues" , "Value generated for nodeID: %d is: %d\n", TOS_NODE_ID, sensorValue);
+    }
+    
+    //dbg("Custom", "Node: %d test %d",TOS_NODE_ID, test);
+
+    //Nodes not in the tree Do not need to take part in aggregation 
+    if(curdepth==255 || curdepth==-1){
+			return;
+		}
+
+    // Start depth-based delay for sending data
+    delay = (maxDepth - curdepth) * perDepthDelay + randDelay; //Nodes deeper have less delay so Act faster
+    
+    //Micropulse Critical Path calculation
+    if(currEpoch == 5){
+        call Phase1Timer.startOneShot(delay);
+    }
+
+    call DepthDelayTimer.startOneShot(delay);
+  }
+
+//Handle depth-based delayed transmission
+  event void DepthDelayTimer.fired() {
+    if(dataSentThisEpoch){
+      return;
+    }  
+
+    if(receivedFromChildren < childCount){
+      call DepthDelayTimer.startOneShot(50);
+      return;
+    }
+
+    dataSentThisEpoch = TRUE;
+
+    if(TOS_NODE_ID == 0){
+      call Aggregator.finalizeAggregationOptional(); //Also need to uncomment chooseAggregation on boot.booted()
+      //call Aggregator.finalizeAggregation();      
+    }else{
+      call Aggregator.sendAggregatedData(parentID);
+    }
+  }
+
+	
 	event void RadioControl.startDone(error_t err)
 	{
 		if (err == SUCCESS)
@@ -319,17 +394,8 @@ implementation
 	{
 		message_t tmp;
 		error_t enqueueDone;
+		
 		RoutingMsg* mrpkt;
-        uint32_t delay; // Minimum delay
-        uint32_t perDepthDelay = 450; // Additional delay per depth - 
-        uint32_t randDelay = (maxDepth - TOS_NODE_ID) * 5; //Small randomised delay based on nodeID to ensure fewer message collisions
-    
-        //Depth-based delay for sending data
-        delay = (maxDepth - curdepth) * perDepthDelay + randDelay; //Nodes deeper have less delay so Act faster
-
-        call Phase1Timer.startOneShot(delay);
-
-
 		dbg("SRTreeC", "RoutingMsgTimer fired!  radioBusy = %s \n",(RoutingSendBusy)?"True":"False");
 #ifdef PRINTFDBG_MODE
 		printfflush();
@@ -409,13 +475,9 @@ implementation
 #endif
 		}		
 	}
-    
-    /************************************************************************************************************************
-    Timer
 
-    ************************************************************************************************/
 
-    //Gpiperakis Pkapenekakis
+    //Gpiperakis Pkapenekakis Timer for Micropulse
     event void Phase1Timer.fired(){
         //Pkapenekakis, gpiperakis  
         if(dataSentPhase1){return;}
@@ -432,12 +494,10 @@ implementation
 	
 
 
-
-
-event void Led0Timer.fired()
-{
-	call Leds.led0Off();
-}
+	event void Led0Timer.fired()
+	{
+		call Leds.led0Off();
+	}
 	event void Led1Timer.fired()
 	{
 		call Leds.led1Off();
@@ -560,6 +620,9 @@ event void Led0Timer.fired()
 		error_t enqueueDone;
 		message_t tmp;
 		uint16_t msource;
+    // Add received data to current aggregation @Pkapenekakis, Gpiperakis
+
+    receivedFromChildren++; //Gpiperakis Pkanepekakis
 		
 		msource =call RoutingAMPacket.source(msg);
 		
@@ -990,11 +1053,17 @@ event void Led0Timer.fired()
 #endif
 			if ( mr->parentID == TOS_NODE_ID)
 			{
-
+				childCount++;
+        //dbg("TagTree", "I am %d ,Child node %d added. Total children: %d\n",TOS_NODE_ID, mr->senderID, childCount);
+				
 			}
 			else
 			{
-
+				if (childCount > 0) {
+            childCount--;
+           //dbg("TagTree", "I am %d ,Child node %d removed. Total children: %d\n",TOS_NODE_ID, mr->senderID, childCount);
+        }
+				
 			}
 			if ( TOS_NODE_ID==0)
 			{
@@ -1027,7 +1096,7 @@ event void Led0Timer.fired()
         //@Gpiperakis, Pkapenekakis Was commented by ADELI, Slightly Changed
 				m = (NotifyParentMsg *) (call NotifyPacket.getPayload(&tmp, sizeof(NotifyParentMsg)));
 				m->senderID=mr->senderID;
-			  m->depth = curdepth;
+			  //m->depth = maxDepth;
 				m->parentID = mr->parentID;
 				
 				dbg("SRTreeC" , "Forwarding NotifyParentMsg from senderID= %d  to parentID=%d \n" , m->senderID, parentID);
