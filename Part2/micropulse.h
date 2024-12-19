@@ -2,8 +2,8 @@
 #define MICROPULSE_H
 
 enum{
-	AM_MICROPULSEP1MSG = 240,
-    AM_MICROPULSEP2MSG = 240,
+	AM_MICROPULSEP1MSG = 241,
+    AM_MICROPULSEP2MSG = 242,
 };
 
 typedef nx_struct micropulseP2Struct
