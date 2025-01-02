@@ -73,7 +73,11 @@ implementation{
 
     SRTreeC.MicroPulse -> MicroPulseC;
     MicroPulseC.Random -> RandomC;
-    MicroPulseC.Packet -> ActiveMessageC;
+    MicroPulseC.PacketP1 -> MicroPulseP1Sender.Packet;
+    MicroPulseC.AMPacketP1 -> MicroPulseP1Sender.AMPacket;
+    MicroPulseC.PacketP2 -> MicroPulseP2Sender.Packet;
+    MicroPulseC.AMPacketP2 -> MicroPulseP2Sender.AMPacket;
+
     MicroPulseC.AMSendP1 -> MicroPulseP1Sender.AMSend;
     MicroPulseC.ReceiveP1 -> MicroPulseP1Receiver.Receive;
     MicroPulseC.AMSendP2 -> MicroPulseP2Sender.AMSend;
