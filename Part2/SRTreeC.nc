@@ -239,11 +239,14 @@ implementation
     uint32_t delay; // Minimum delay
     uint32_t perDepthDelay = 450; // Additional delay per depth - 
     uint32_t randDelay = (maxDepth - TOS_NODE_ID) * 5; //Small randomised delay based on nodeID to ensure fewer message collisions
-    dataSentThisEpoch = FALSE;
+    uint16_t criticalPathValue;
+    uint16_t load = call MicroPulse.getLoadValue();    //Always generated before so we can get it here
+     
+
+    dataSentThisEpoch = FALSE;    
     currEpoch += 1;
 
     //dbg("Custom" , "Aggregation timer for 40s started for nodeID: %d and epoch %d\n", TOS_NODE_ID, currEpoch);
-    
 
     // Generate and collect data for the current epoch
     if(currEpoch == 1){ //1 already incremented so first epoch = 1
@@ -253,7 +256,7 @@ implementation
     }else{
       //Generate sensor value within ±30% of its lastValue
       sensorValue = call Aggregator.generateRandomSensorValue();
-      dbg("SensorValues" , "Value generated for nodeID: %d is: %d\n", TOS_NODE_ID, sensorValue);
+      dbg("SensorValues" , "Epoch: %d, Value generated for nodeID: %d is: %d\n", currEpoch, TOS_NODE_ID, sensorValue);
     }
     
     //dbg("Custom", "Node: %d test %d",TOS_NODE_ID, test);
@@ -270,8 +273,14 @@ implementation
     if(currEpoch == 5){
         call Phase1Timer.startOneShot(delay);
     }
-
-    call DepthDelayTimer.startOneShot(delay);
+    
+    //CRASHES HERE    
+    if(currEpoch > 5){
+        criticalPathValue = call MicroPulse.getUpperBound();
+        //dbg("Custom", "Was here 1st time!!!!!!!!!\n");
+        call DepthDelayTimer.startOneShot(criticalPathValue * 10 );
+    }
+    
   }
 
 //Handle depth-based delayed transmission
@@ -484,7 +493,7 @@ implementation
 
         dataSentPhase1 = TRUE;
         if(TOS_NODE_ID == 0){
-            dbg("Custom", "Was here, %d\n", TOS_NODE_ID);
+            //dbg("Custom", "Was here, %d\n", TOS_NODE_ID);
             call MicroPulse.finalizePhaseOne();     
         }else{
             //dbg("Custom", "Was 2nd here, %d\n", TOS_NODE_ID);
