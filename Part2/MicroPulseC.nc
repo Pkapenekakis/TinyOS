@@ -2,8 +2,11 @@
 #include "micropulse.h"
 
 module MicroPulseC {
-    uses interface Random; 
-    uses interface Packet;
+    uses interface Random;
+    uses interface Packet as PacketP1; 
+    uses interface AMPacket as AMPacketP1;
+    uses interface Packet as PacketP2; 
+    uses interface AMPacket as AMPacketP2;
     uses interface AMSend as AMSendP1; // For Phase 1
     uses interface AMSend as AMSendP2; // For Phase 2
     uses interface Receive as ReceiveP1; // For Phase 1
@@ -13,12 +16,14 @@ module MicroPulseC {
 
 implementation {
     uint16_t childMaxValue; //critical Path
+    uint16_t upperBound; //UpperBound of timing window
     uint16_t load;
     uint16_t taskParentID;
-    uint8_t nodePhase = 0; //0-> phase 1, 1->phase 2 only used in Phase2 Functions
     message_t output; //Needs to be declared here in order for the sendData task to work
     bool sendBusy = FALSE; //Flag to track if we are seding data at the moment
     bool alreadySentData = FALSE;
+    static uint8_t retryCount = 0;
+    static uint8_t MAX_RETRIES = 20;
 
 
     /********************************************************************
@@ -56,7 +61,7 @@ implementation {
     //Sends a message to parent about the criticalPath
     task void sendCriticalPathToParentTask() {
         static error_t sendError;
-        micropulseP1_t* payload;
+        micropulse_t* payload;
 
         if(sendBusy){
             dbg("Phase1CriticalPathTask", "Send already in progress for node %d\n", TOS_NODE_ID);
@@ -66,11 +71,14 @@ implementation {
         sendBusy = TRUE; //A send is starting
 
         // Prepare the message
-        payload = (micropulseP1_t*) call Packet.getPayload(&output, sizeof(micropulseP1_t));
+        //payload = (micropulse_t*) output.data;
+        payload = (micropulse_t*) call PacketP1.getPayload(&output, sizeof(micropulse_t));
+
         if (payload == NULL) {
             dbg("Phase1CriticalPathTask", "Node %d: Failed to get payload!\n", TOS_NODE_ID);
             sendBusy = FALSE;
             post sendCriticalPathToParentTask();  // Retry
+            return;
         }
 
         atomic {
@@ -79,7 +87,11 @@ implementation {
 
         dbg("Phase1CriticalPathTask", "Sending CriticalPath to: %d\n", childMaxValue + load);
 
-        sendError = call AMSendP1.send(taskParentID, &output, sizeof(micropulseP1_t));
+        call AMPacketP1.setDestination(&output, taskParentID);
+        call PacketP1.setPayloadLength(&output, sizeof(micropulse_t));
+       
+        sendError = call AMSendP1.send(taskParentID, &output, sizeof(micropulse_t));
+
         if (sendError != SUCCESS) {
             dbg("Phase1CriticalPathTask", "Node %d: Send failed, reposting task\n", TOS_NODE_ID);
             sendBusy = FALSE; // Reset flag
@@ -111,8 +123,8 @@ implementation {
 
     //Receive data from father nodes
     event message_t* ReceiveP1.receive(message_t* msg, void* payload, uint8_t len) {
-        micropulseP1_t receivedData = *(micropulseP1_t*)payload;
-        //uint16_t lastMax;
+        //micropulse_t receivedData = *(micropulse_t*)payload;
+        micropulse_t* receivedData = (micropulse_t*) payload;
         uint16_t receivedMax;
 
         if (payload == NULL) {
@@ -120,9 +132,7 @@ implementation {
             return msg;
         }
 
-        //lastMax = maxValue; //Since maxValue changes as values are received keep track of the original in case it was greater
-        receivedMax = receivedData.criticalValue;
-
+        receivedMax = receivedData->criticalValue;
 
         dbg("Phase1Receive", "Node %d: Received data: critPath: %d \n",TOS_NODE_ID, receivedMax );
 
@@ -141,11 +151,22 @@ implementation {
     //Sends a message to children about the criticalPath -- IS PHASE 2
     task void sendCriticalPathTask() {
         static error_t sendError;
-        micropulseP2_t* payload;
+        micropulse_t* payload;
 
         if(alreadySentData){
             return;
         }
+
+        //dbg("Custom","Node: %d Crash check in send\n",TOS_NODE_ID);
+
+        if(output.data == NULL){
+            return;
+        }
+
+        memset(&output, 0, sizeof(message_t));
+        payload = (micropulse_t*) call PacketP2.getPayload(&output, sizeof(micropulse_t));
+
+        
 
         if(sendBusy){
             dbg("Phase2PathPropagation", "Send already in progress for node %d\n", TOS_NODE_ID);
@@ -154,26 +175,35 @@ implementation {
 
         sendBusy = TRUE; //A send is starting
 
-        // Prepare the message
-        payload = (micropulseP2_t*) call Packet.getPayload(&output, sizeof(micropulseP2_t));
-
         if (payload == NULL) {
             dbg("Phase2PathPropagation", "Failed to get payload!\n");
             sendBusy = FALSE;
+            if(retryCount > MAX_RETRIES){
+                return;
+            }
+            retryCount++;
             post sendCriticalPathTask();  // Retry
+            return;
         }
 
         atomic {
-            payload->phase = 1; //Change to phase2
-            payload->criticalValue = childMaxValue;
+            payload->criticalValue = upperBound;
         }
 
-        dbg("Phase2PathPropagation", "Propagating critical value to children: %u\n", childMaxValue);
+        dbg("Phase2PathPropagation", "Node %d: Propagating critical value to children: %u\n",TOS_NODE_ID, upperBound);
 
-        sendError = call AMSendP2.send(AM_BROADCAST_ADDR, &output, sizeof(micropulseP2_t));
+        call AMPacketP2.setDestination(&output, AM_BROADCAST_ADDR);
+        call PacketP2.setPayloadLength(&output, sizeof(micropulse_t));
+
+        sendError = call AMSendP2.send(AM_BROADCAST_ADDR, &output, sizeof(micropulse_t));
+
         if (sendError != SUCCESS) {
             dbg("Phase2PathPropagation", "Send failed, reposting task\n");
             sendBusy = FALSE;
+            if(retryCount > MAX_RETRIES){
+                return;
+            }
+            retryCount++;
             post sendCriticalPathTask();  // Retry
         }
     }
@@ -185,6 +215,10 @@ implementation {
             dbg("Phase2PathPropagation", "Critical Path sent successfully!\n");
         } else {
             dbg("Phase2PathPropagation", "Message send failed in sendDone, reposting task\n");
+            if(retryCount > MAX_RETRIES){
+                return;
+            }
+            retryCount++;
             post sendCriticalPathTask();  //Retry on failure
         }
     }
@@ -195,20 +229,40 @@ implementation {
 
     //Receive data from father nodes
     event message_t* ReceiveP2.receive(message_t* msg, void* payload, uint8_t len) {
-        micropulseP2_t receivedData = *(micropulseP2_t*)payload;
+        micropulse_t receivedData;
+        uint16_t senderID;
+
+        if (msg == NULL) {
+            dbg("Phase2Receive", "Received null message\n");
+            return msg;
+        }
 
         if (payload == NULL) {
             dbg("Phase2Receive", "Received null payload\n");
             return msg;
         }
+        
+        senderID = call AMPacketP2.source(msg);
+        receivedData = *(micropulse_t*) payload;
 
-        childMaxValue = receivedData.criticalValue;
-        nodePhase = receivedData.phase;
+        //dbg("Custom","SENDER ID FOR NODE: %d is node: %d and PARENTID IS %d\n",TOS_NODE_ID, senderID, taskParentID);
 
-        dbg("Phase2Receive","Node: %d collected criticalPath Value: %d\n", TOS_NODE_ID, childMaxValue);
+        
+        if(taskParentID != senderID){ 
+            //dbg("CustomBug", "Node: %d Received message from Non-Parent %d\n",TOS_NODE_ID, senderID);
+            return msg;
+        }
+
+        upperBound = receivedData.criticalValue - load;
+
+        if(upperBound < 0){
+            upperBound = 0;
+        }
+
+        dbg("Phase2Receive","Node: %d collected criticalPath Value: %d\n", TOS_NODE_ID, upperBound);
 
         post sendCriticalPathTask();
-         
+     
         return msg;
     }
 
@@ -219,8 +273,20 @@ implementation {
     //Only called by Node 0
     command void MicroPulse.finalizePhaseOne(){
         dbg("Phase2Receive", "\n Node: %d changes phase \n", TOS_NODE_ID);
-        nodePhase = 1;
+        upperBound = childMaxValue; //For node 0 the value it receives from children is its upperbound
         post sendCriticalPathTask();
+    }
+
+    command uint16_t MicroPulse.getCriticalPathValue(){
+        return childMaxValue;
+    }
+
+    command uint16_t MicroPulse.getLoadValue(){
+        return load;
+    }
+
+    command uint16_t MicroPulse.getUpperBound(){
+        return upperBound;    
     }
 
    
