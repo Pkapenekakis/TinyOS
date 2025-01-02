@@ -27,12 +27,12 @@ print "TicksPerSecond : ", t.ticksPerSecond(),"\n"
 #t.addChannel("PacketQueueC",f)
 
 #Aggregation
-#t.addChannel("SensorValues",f)
+t.addChannel("SensorValues",f)
 #t.addChannel("CustomSend",f)
 #t.addChannel("CustomReceive",f)
 #t.addChannel("CustomAggregationFunction",f)
 #t.addChannel("CustomDataChosen",f)
-t.addChannel("Custom",f)
+
 
 #Micropulse
 t.addChannel("generateValues",f)
@@ -40,6 +40,10 @@ t.addChannel("Phase1CriticalPathTask",f)
 t.addChannel("Phase1Receive",f)
 t.addChannel("Phase2PathPropagation",f)
 t.addChannel("Phase2Receive",f)
+
+t.addChannel("Custom",f)
+t.addChannel("CustomBug",f)
+
 
 for i in range(0,10):
 	m=t.getNode(i)
